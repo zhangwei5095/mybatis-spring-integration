@@ -1,5 +1,5 @@
 /**
- *    Copyright 2010-2015 the original author or authors.
+ *    Copyright 2010-2016 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -25,7 +25,9 @@ import javax.sql.DataSource;
 import org.apache.ibatis.logging.Log;
 import org.apache.ibatis.logging.LogFactory;
 import org.apache.ibatis.transaction.Transaction;
+import org.springframework.jdbc.datasource.ConnectionHolder;
 import org.springframework.jdbc.datasource.DataSourceUtils;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * {@code SpringManagedTransaction} handles the lifecycle of a JDBC connection.
@@ -39,8 +41,6 @@ import org.springframework.jdbc.datasource.DataSourceUtils;
  *
  * @author Hunter Presnall
  * @author Eduardo Macarron
- * 
- * @version $Id$
  */
 public class SpringManagedTransaction implements Transaction {
 
@@ -125,6 +125,18 @@ public class SpringManagedTransaction implements Transaction {
   @Override
   public void close() throws SQLException {
     DataSourceUtils.releaseConnection(this.connection, this.dataSource);
+  }
+    
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  public Integer getTimeout() throws SQLException {
+    ConnectionHolder holder = (ConnectionHolder) TransactionSynchronizationManager.getResource(dataSource);
+    if (holder != null && holder.hasTimeout()) {
+      return holder.getTimeToLiveInSeconds();
+    } 
+    return null;
   }
 
 }

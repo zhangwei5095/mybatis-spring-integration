@@ -1,5 +1,5 @@
 /**
- *    Copyright 2010-2015 the original author or authors.
+ *    Copyright 2010-2016 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -52,7 +52,6 @@ import org.springframework.util.StringUtils;
  * 
  * @see MapperFactoryBean
  * @since 1.2.0
- * @version $Id$
  */
 public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
 
@@ -70,7 +69,7 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
 
   private Class<?> markerInterface;
 
-  private MapperFactoryBean mapperFactoryBean = new MapperFactoryBean();
+  private MapperFactoryBean<?> mapperFactoryBean = new MapperFactoryBean<Object>();
 
   public ClassPathMapperScanner(BeanDefinitionRegistry registry) {
     super(registry, false);
@@ -104,8 +103,8 @@ public class ClassPathMapperScanner extends ClassPathBeanDefinitionScanner {
     this.sqlSessionFactoryBeanName = sqlSessionFactoryBeanName;
   }
 
-  public void setMapperFactoryBean(MapperFactoryBean mapperFactoryBean) {
-    this.mapperFactoryBean = (mapperFactoryBean != null ? mapperFactoryBean : new MapperFactoryBean());
+  public void setMapperFactoryBean(MapperFactoryBean<?> mapperFactoryBean) {
+    this.mapperFactoryBean = mapperFactoryBean != null ? mapperFactoryBean : new MapperFactoryBean<Object>();
   }
 
 

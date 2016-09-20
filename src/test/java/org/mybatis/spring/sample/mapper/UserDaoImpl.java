@@ -1,5 +1,5 @@
 /**
- *    Copyright 2010-2015 the original author or authors.
+ *    Copyright 2010-2016 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  */
-package org.mybatis.spring.sample.dao;
+package org.mybatis.spring.sample.mapper;
 
 import org.mybatis.spring.sample.domain.User;
 import org.mybatis.spring.support.SqlSessionDaoSupport;
@@ -23,14 +23,12 @@ import org.mybatis.spring.support.SqlSessionDaoSupport;
  * instead of the MyBatis one. SqlSessions are handled by Spring so you don't
  * need to open/close/commit/rollback.
  * MyBatis exceptions are translated to Spring Data Exceptions.
- *
- * @version $Id$
  */
-public class UserDaoImpl extends SqlSessionDaoSupport implements UserDao {
+public class UserDaoImpl extends SqlSessionDaoSupport implements UserMapper {
 
   @Override
   public User getUser(String userId) {
-    return (User) getSqlSession().selectOne("org.mybatis.spring.sample.dao.UserDao.getUser", userId);
+    return (User) getSqlSession().selectOne("org.mybatis.spring.sample.mapper.UserMapper.getUser", userId);
   }
 
 }

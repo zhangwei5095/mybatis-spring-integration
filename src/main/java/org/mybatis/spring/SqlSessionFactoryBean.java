@@ -1,5 +1,5 @@
 /**
- *    Copyright 2010-2015 the original author or authors.
+ *    Copyright 2010-2016 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package org.mybatis.spring;
 
 import static org.springframework.util.Assert.notNull;
+import static org.springframework.util.Assert.state;
 import static org.springframework.util.ObjectUtils.isEmpty;
 import static org.springframework.util.StringUtils.hasLength;
 import static org.springframework.util.StringUtils.tokenizeToStringArray;
@@ -28,7 +29,9 @@ import javax.sql.DataSource;
 
 import org.apache.ibatis.builder.xml.XMLConfigBuilder;
 import org.apache.ibatis.builder.xml.XMLMapperBuilder;
+import org.apache.ibatis.cache.Cache;
 import org.apache.ibatis.executor.ErrorContext;
+import org.apache.ibatis.io.VFS;
 import org.apache.ibatis.logging.Log;
 import org.apache.ibatis.logging.LogFactory;
 import org.apache.ibatis.mapping.DatabaseIdProvider;
@@ -64,16 +67,19 @@ import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy;
  * @author Putthibong Boonbong
  * @author Hunter Presnall
  * @author Eduardo Macarron
- * 
+ * @author Eddú Meléndez
+ * @author Kazuki Shimizu
+ *
  * @see #setConfigLocation
  * @see #setDataSource
- * @version $Id$
  */
 public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, InitializingBean, ApplicationListener<ApplicationEvent> {
 
   private static final Log LOGGER = LogFactory.getLog(SqlSessionFactoryBean.class);
 
   private Resource configLocation;
+
+  private Configuration configuration;
 
   private Resource[] mapperLocations;
 
@@ -107,13 +113,17 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
   //issue #19. No default provider.
   private DatabaseIdProvider databaseIdProvider;
 
+  private Class<? extends VFS> vfs;
+
+  private Cache cache;
+
   private ObjectFactory objectFactory;
 
   private ObjectWrapperFactory objectWrapperFactory;
 
   /**
    * Sets the ObjectFactory.
-   * 
+   *
    * @since 1.1.2
    * @param objectFactory
    */
@@ -123,7 +133,7 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
 
   /**
    * Sets the ObjectWrapperFactory.
-   * 
+   *
    * @since 1.1.2
    * @param objectWrapperFactory
    */
@@ -143,13 +153,29 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
 
   /**
    * Sets the DatabaseIdProvider.
-   * As of version 1.2.2 this variable is not initialized by default. 
+   * As of version 1.2.2 this variable is not initialized by default.
    *
    * @since 1.1.0
    * @param databaseIdProvider
    */
   public void setDatabaseIdProvider(DatabaseIdProvider databaseIdProvider) {
     this.databaseIdProvider = databaseIdProvider;
+  }
+
+  public Class<? extends VFS> getVfs() {
+    return this.vfs;
+  }
+
+  public void setVfs(Class<? extends VFS> vfs) {
+    this.vfs = vfs;
+  }
+
+  public Cache getCache() {
+    return this.cache;
+  }
+
+  public void setCache(Cache cache) {
+    this.cache = cache;
   }
 
   /**
@@ -242,6 +268,15 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
    */
   public void setConfigLocation(Resource configLocation) {
     this.configLocation = configLocation;
+  }
+
+  /**
+   * Set a customized MyBatis configuration.
+   * @param configuration MyBatis configuration
+   * @since 1.3.0
+   */
+  public void setConfiguration(Configuration configuration) {
+    this.configuration = configuration;
   }
 
   /**
@@ -339,6 +374,8 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
   public void afterPropertiesSet() throws Exception {
     notNull(dataSource, "Property 'dataSource' is required");
     notNull(sqlSessionFactoryBuilder, "Property 'sqlSessionFactoryBuilder' is required");
+    state((configuration == null && configLocation == null) || !(configuration != null && configLocation != null),
+              "Property 'configuration' and 'configLocation' can not specified with together");
 
     this.sqlSessionFactory = buildSqlSessionFactory();
   }
@@ -348,6 +385,7 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
    *
    * The default implementation uses the standard MyBatis {@code XMLConfigBuilder} API to build a
    * {@code SqlSessionFactory} instance based on an Reader.
+   * Since 1.3.0, it can be specified a {@link Configuration} instance directly(without config file).
    *
    * @return SqlSessionFactory
    * @throws IOException if loading the config file failed
@@ -357,12 +395,19 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
     Configuration configuration;
 
     XMLConfigBuilder xmlConfigBuilder = null;
-    if (this.configLocation != null) {
+    if (this.configuration != null) {
+      configuration = this.configuration;
+      if (configuration.getVariables() == null) {
+        configuration.setVariables(this.configurationProperties);
+      } else if (this.configurationProperties != null) {
+        configuration.getVariables().putAll(this.configurationProperties);
+      }
+    } else if (this.configLocation != null) {
       xmlConfigBuilder = new XMLConfigBuilder(this.configLocation.getInputStream(), null, this.configurationProperties);
       configuration = xmlConfigBuilder.getConfiguration();
     } else {
       if (LOGGER.isDebugEnabled()) {
-        LOGGER.debug("Property 'configLocation' not specified, using default MyBatis Configuration");
+        LOGGER.debug("Property `configuration` or 'configLocation' not specified, using default MyBatis Configuration");
       }
       configuration = new Configuration();
       configuration.setVariables(this.configurationProperties);
@@ -374,6 +419,10 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
 
     if (this.objectWrapperFactory != null) {
       configuration.setObjectWrapperFactory(this.objectWrapperFactory);
+    }
+
+    if (this.vfs != null) {
+      configuration.setVfsImpl(this.vfs);
     }
 
     if (hasLength(this.typeAliasesPackage)) {
@@ -425,7 +474,7 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
         }
       }
     }
-    
+
     if (this.databaseIdProvider != null) {//fix #64 set databaseId before parse mapper xmls
       try {
         configuration.setDatabaseId(this.databaseIdProvider.getDatabaseId(this.dataSource));
@@ -433,7 +482,11 @@ public class SqlSessionFactoryBean implements FactoryBean<SqlSessionFactory>, In
         throw new NestedIOException("Failed getting a databaseId", e);
       }
     }
-    
+
+    if (this.cache != null) {
+      configuration.addCache(this.cache);
+    }
+
     if (xmlConfigBuilder != null) {
       try {
         xmlConfigBuilder.parse();

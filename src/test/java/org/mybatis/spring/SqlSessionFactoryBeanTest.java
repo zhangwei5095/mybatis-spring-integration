@@ -1,5 +1,5 @@
 /**
- *    Copyright 2010-2015 the original author or authors.
+ *    Copyright 2010-2016 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -19,11 +19,16 @@ import static org.junit.Assert.*;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Properties;
 
+import org.apache.ibatis.cache.impl.PerpetualCache;
+import org.apache.ibatis.io.JBoss6VFS;
 import org.apache.ibatis.reflection.factory.DefaultObjectFactory;
 import org.apache.ibatis.reflection.factory.ObjectFactory;
 import org.apache.ibatis.reflection.wrapper.DefaultObjectWrapperFactory;
 import org.apache.ibatis.reflection.wrapper.ObjectWrapperFactory;
+import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.transaction.TransactionFactory;
 import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
@@ -41,10 +46,6 @@ import org.springframework.core.io.Resource;
 
 import com.mockrunner.mock.jdbc.MockDataSource;
 
-/**
- *
- * @version $Id$
- */
 public final class SqlSessionFactoryBeanTest {
 
   private static final class TestObjectFactory extends DefaultObjectFactory {
@@ -115,6 +116,113 @@ public final class SqlSessionFactoryBeanTest {
   }
 
   @Test
+  public void testNullConfiguration() throws Exception {
+    setupFactoryBean();
+
+    factoryBean.setConfigLocation(null);
+
+    assertDefaultConfig(factoryBean.getObject());
+  }
+
+  @Test
+  public void testSetConfiguration() throws Exception {
+    setupFactoryBean();
+
+    Configuration customConfiguration = new Configuration();
+    customConfiguration.setCacheEnabled(false);
+    customConfiguration.setUseGeneratedKeys(true);
+    customConfiguration.setDefaultExecutorType(ExecutorType.REUSE);
+    customConfiguration.setVfsImpl(JBoss6VFS.class);
+    factoryBean.setConfiguration(customConfiguration);
+
+    SqlSessionFactory factory = factoryBean.getObject();
+
+    assertEquals(factory.getConfiguration().getEnvironment().getId(), SqlSessionFactoryBean.class.getSimpleName());
+    assertSame(factory.getConfiguration().getEnvironment().getDataSource(), dataSource);
+    assertSame(factory.getConfiguration().getEnvironment().getTransactionFactory().getClass(), SpringManagedTransactionFactory.class);
+    assertSame(factory.getConfiguration().getVfsImpl(), JBoss6VFS.class);
+
+    assertFalse(factory.getConfiguration().isCacheEnabled());
+    assertTrue(factory.getConfiguration().isUseGeneratedKeys());
+    assertSame(factory.getConfiguration().getDefaultExecutorType(), ExecutorType.REUSE);
+  }
+
+  @Test
+  public void testSpecifyVariablesOnly() throws Exception {
+    setupFactoryBean();
+
+    Configuration customConfiguration = new Configuration();
+    Properties variables = new Properties();
+    variables.put("username", "sa");
+    customConfiguration.setVariables(variables);
+    factoryBean.setConfiguration(customConfiguration);
+
+    factoryBean.setConfigurationProperties(null);
+
+    SqlSessionFactory factory = factoryBean.getObject();
+
+    assertEquals(1, factory.getConfiguration().getVariables().size());
+    assertEquals("sa", factory.getConfiguration().getVariables().get("username"));
+  }
+
+  @Test
+  public void testSpecifyVariablesAndConfigurationProperties() throws Exception {
+    setupFactoryBean();
+
+    Configuration customConfiguration = new Configuration();
+    Properties variables = new Properties();
+    variables.put("url", "jdbc:localhost/test");
+    variables.put("username", "sa");
+    customConfiguration.setVariables(variables);
+    factoryBean.setConfiguration(customConfiguration);
+
+    Properties configurationProperties = new Properties();
+    configurationProperties.put("username", "dev");
+    configurationProperties.put("password", "Passw0rd");
+    factoryBean.setConfigurationProperties(configurationProperties);
+
+    SqlSessionFactory factory = factoryBean.getObject();
+
+    assertEquals(3, factory.getConfiguration().getVariables().size());
+    assertEquals("jdbc:localhost/test", factory.getConfiguration().getVariables().get("url"));
+    assertEquals("dev", factory.getConfiguration().getVariables().get("username"));
+    assertEquals("Passw0rd", factory.getConfiguration().getVariables().get("password"));
+  }
+
+  @Test
+  public void testSpecifyConfigurationPropertiesOnly() throws Exception {
+    setupFactoryBean();
+
+    Configuration customConfiguration = new Configuration();
+    customConfiguration.setVariables(null);
+    factoryBean.setConfiguration(customConfiguration);
+
+    Properties configurationProperties = new Properties();
+    configurationProperties.put("username", "dev");
+    factoryBean.setConfigurationProperties(configurationProperties);
+
+    SqlSessionFactory factory = factoryBean.getObject();
+
+    assertEquals(1, factory.getConfiguration().getVariables().size());
+    assertEquals("dev", factory.getConfiguration().getVariables().get("username"));
+  }
+
+  @Test
+  public void testNotSpecifyVariableAndConfigurationProperties() throws Exception {
+    setupFactoryBean();
+
+    Configuration customConfiguration = new Configuration();
+    customConfiguration.setVariables(null);
+    factoryBean.setConfiguration(customConfiguration);
+
+    factoryBean.setConfigurationProperties(null);
+
+    SqlSessionFactory factory = factoryBean.getObject();
+
+    assertNull(factory.getConfiguration().getVariables());
+  }
+
+  @Test
   public void testNullConfigLocation() throws Exception {
     setupFactoryBean();
     // default should also be null, but test explicitly setting to null
@@ -136,6 +244,7 @@ public final class SqlSessionFactoryBeanTest {
     assertSame(factory.getConfiguration().getEnvironment().getDataSource(), dataSource);
     assertSame(factory.getConfiguration().getEnvironment().getTransactionFactory().getClass(),
         org.mybatis.spring.transaction.SpringManagedTransactionFactory.class);
+    assertSame(factory.getConfiguration().getVfsImpl(), JBoss6VFS.class);
 
     // properties explicitly set differently than the defaults in the config xml
     assertFalse(factory.getConfiguration().isCacheEnabled());
@@ -147,6 +256,23 @@ public final class SqlSessionFactoryBeanTest {
 
     assertEquals(0, factory.getConfiguration().getResultMapNames().size());
     assertEquals(0, factory.getConfiguration().getParameterMapNames().size());
+  }
+
+  @Test
+  public void testSpecifyConfigurationAndConfigLocation() throws Exception {
+    setupFactoryBean();
+
+    factoryBean.setConfiguration(new Configuration());
+    factoryBean.setConfigLocation(new org.springframework.core.io.ClassPathResource(
+            "org/mybatis/spring/mybatis-config.xml"));
+
+    try {
+      factoryBean.getObject();
+      fail();
+    } catch (IllegalStateException e) {
+      assertEquals("Property 'configuration' and 'configLocation' can not specified with together", e.getMessage());
+    }
+
   }
 
   @Test
@@ -267,6 +393,14 @@ public final class SqlSessionFactoryBeanTest {
 
     ObjectWrapperFactory objectWrapperFactory = factoryBean.getObject().getConfiguration().getObjectWrapperFactory();
     assertTrue(objectWrapperFactory instanceof TestObjectWrapperFactory);
+  }
+
+  @Test
+  public void testAddCache() {
+    setupFactoryBean();
+    PerpetualCache cache = new PerpetualCache("test-cache");
+    this.factoryBean.setCache(cache);
+    assertEquals("test-cache", this.factoryBean.getCache().getId());
   }
 
   private void assertDefaultConfig(SqlSessionFactory factory) {

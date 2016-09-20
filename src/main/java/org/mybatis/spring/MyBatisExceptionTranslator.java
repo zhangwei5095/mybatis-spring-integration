@@ -1,5 +1,5 @@
 /**
- *    Copyright 2010-2015 the original author or authors.
+ *    Copyright 2010-2016 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.support.PersistenceExceptionTranslator;
 import org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator;
 import org.springframework.jdbc.support.SQLExceptionTranslator;
+import org.springframework.transaction.TransactionException;
 
 /**
  * Default exception translator.
@@ -34,8 +35,6 @@ import org.springframework.jdbc.support.SQLExceptionTranslator;
  * first exception is translated.
  *
  * @author Eduardo Macarron
- * 
- * @version $Id$
  */
 public class MyBatisExceptionTranslator implements PersistenceExceptionTranslator {
 
@@ -72,6 +71,8 @@ public class MyBatisExceptionTranslator implements PersistenceExceptionTranslato
       if (e.getCause() instanceof SQLException) {
         this.initExceptionTranslator();
         return this.exceptionTranslator.translate(e.getMessage() + "\n", null, (SQLException) e.getCause());
+      } else if (e.getCause() instanceof TransactionException) {
+        throw (TransactionException) e.getCause();
       }
       return new MyBatisSystemException(e);
     } 
